@@ -1,0 +1,118 @@
+---
+title: "Twitch_Exploration"
+author: "Mariana Castaneda Roiz"
+date: "2/29/2020"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r}
+#Data was found by me using the Twitch API https://Twitch.tv
+
+#Regression
+library(tidyverse)
+library(ggplot2)
+library(dplyr)
+twitch <- read.csv("Twitch.csv", header=TRUE)
+tb1 <- tbl_df(lapply(twitch, as.character))
+remove(twitch)
+
+select(tb1, language, viewer_count, user_name) %>% glimpse
+tb1$viewer_count <- as.numeric(tb1$viewer_count)
+tb1$game_id <- as.factor(tb1$game_id)
+tb1$language <- as.factor(tb1$language)
+#Arrange in ascending order
+tb1 <- arrange(tb1, desc(viewer_count))
+
+
+# Remove rows that contain unecessary info from the API request
+tb1 <- subset(tb1, language!="language", select = -c(tag_ids,thumbnail_url,type))
+
+#Convert from factor to double
+glimpse(tb1)
+#Display the lowest and highest viewer count
+#tb1 %>%
+  #summarize(min=min(viewer_count), max=max(viewer_count),median=median(viewer_count), sd=sd(viewer_count))
+
+#Maximum = LCS game 
+
+```
+
+
+# Step 2: Data Exploration
+```{r}
+#Creat a vector that contains all of the game ids
+games <- tb1 %>%
+  group_by(game_id) %>%
+    tally()
+
+#Display the game with that is the most streamed
+games[which.max(games$n),]
+
+games[which.min(games$n),]
+
+games <- arrange(games, desc(n))
+top_games <- head(games,5)
+
+
+  
+
+str(tb1)
+summary(tb1$viewer_count)
+head(tb1,5)
+tail(tb1,5)
+#Channel With the most people watching
+tb1[which.max(tb1$viewer_count),]
+
+#Channel with the least people watching
+tb1[which.min((tb1$viewer_count)),]
+
+lol <- tb1[tb1$game_id == 21779,]
+tarkov <- tb1[tb1$game_id == 491931,]
+
+
+#without english
+not_en <- subset(tb1, language!="en")
+ggplot(not_en,aes(x=language)) + geom_histogram(stat = 'count', fill="#8033cc") + labs(y = "Count", title = "Non-English Speaking Streamers")
+
+bp <- ggplot(top_games, aes(x="", y=n, fill=game_id))+
+  geom_bar(width = 1, stat = "identity", color="white")
+pie <- bp + coord_polar("y", start=0) + theme_void() + labs(title="Most streamed categories ")
+pie
+
+
+tb1$game_id <- as.character(tb1$game_id)
+#add columns that represent whether the row is streaming one of the top 5 most streamed games
+tb1 <- tb1 %>% 
+    mutate(popular_game)
+attach(tb1)
+#fill the columns
+i <- 1
+for(value in tb1$game_id){
+  if(game_id == "21779"){
+    tb1$popular_game[i] <- 1
+  }else{
+    tb1$popular_game[i] <- 0
+  }
+  i <- i + 1
+}
+```
+
+
+
+# Naive Bayes, since it's a good base line algorithm
+```{r}
+set.seed(1234)
+i <- sample(1:nrow(tb1), 0.75*nrow(tb1), replace=FALSE)
+train <- tb1[i,]
+test <- tb1[-i,]
+glm1 <- glm(game_id~viewer_count, data=train, family = "binomial")
+summary(glm1)
+probs <- predict(glm1, newdata = test, type="response")
+pred <- ifelse(probs>0.5, 1,0)
+acc <- mean(pred==test$game_id)
+print(paste("Accuracy: "), acc)
+#what if we include language?
+
+```
