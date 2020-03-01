@@ -68,8 +68,6 @@ tb1[which.max(tb1$viewer_count),]
 #Channel with the least people watching
 tb1[which.min((tb1$viewer_count)),]
 
-lol <- tb1[tb1$game_id == 21779,]
-tarkov <- tb1[tb1$game_id == 491931,]
 
 
 #without english
@@ -84,35 +82,70 @@ pie
 
 tb1$game_id <- as.character(tb1$game_id)
 #add columns that represent whether the row is streaming one of the top 5 most streamed games
-tb1 <- tb1 %>% 
-    mutate(popular_game)
-attach(tb1)
-#fill the columns
-i <- 1
-for(value in tb1$game_id){
-  if(game_id == "21779"){
-    tb1$popular_game[i] <- 1
-  }else{
-    tb1$popular_game[i] <- 0
-  }
-  i <- i + 1
-}
+tb1 <- mutate(tb1, popular_strmr= ifelse(viewer_count >= 10000,1,0), popular_game=ifelse(game_id == "21779" | game_id == "32982" | game_id == "33214" |game_id == "491931"| game_id == "509658",1,0))
+
+pop_strmr <- tb1[tb1$popular_strmr== 1,]
+pop_strmr <- pop_strmr[!duplicated(pop_strmr[,c("user_name")]),]
+pop_strmr <- head(pop_strmr,10)
+
+bp <- ggplot(pop_strmr, aes(x="", y=viewer_count, fill=user_name))+
+  geom_bar(width = 1, stat = "identity", color="white")
+pie <- bp + coord_polar("y", start=0) + theme_void() + labs(title="Most popular streamers ")
+pie
+
 ```
 
 
 
-# Naive Bayes, since it's a good base line algorithm
+# Logistic Regression
 ```{r}
+library(caret)
 set.seed(1234)
+attach(tb1)
+tb1$game_id <- as.factor(tb1$game_id)
+tb1$popular_game <- as.factor(tb1$popular_game)
 i <- sample(1:nrow(tb1), 0.75*nrow(tb1), replace=FALSE)
 train <- tb1[i,]
 test <- tb1[-i,]
-glm1 <- glm(game_id~viewer_count, data=train, family = "binomial")
+glm1 <- glm(popular_game~viewer_count +popular_strmr, data=train, family = "binomial")
 summary(glm1)
 probs <- predict(glm1, newdata = test, type="response")
 pred <- ifelse(probs>0.5, 1,0)
-acc <- mean(pred==test$game_id)
-print(paste("Accuracy: "), acc)
-#what if we include language?
+acc <- mean(pred==test$popular_game)
+print(paste("Accuracy: ", acc * 100))
+table(pred,test$popular_game)
+confusionMatrix(as.factor(pred),reference=test$popular_game)
 
+detach(tb1)
+```
+
+# Naive Bayes
+```{r}
+library(e1071)
+nb1 <- naiveBayes(popular_game~viewer_count +popular_strmr+language, data=train)
+nb1
+
+p1 <- predict(nb1, newdata = test, type="class")
+table(p1, test$popular_game)
+acc <- mean(p1==test$popular_game)
+print(paste("Accuracy: ", acc *100))
+
+```
+
+# KNN
+```{r}
+tb1 <- tbl_df(lapply(tb1, as.numeric))
+tb1 <- subset(tb1, select = -c(started_at,title,user_name))
+library(class)
+set.seed(1958)  # setting a seed gets the same results every time
+ind <- sample(2, nrow(tb1), replace=TRUE, prob=c(0.67, 0.33))
+tb1.train <- tb1[ind==1, 1:6]
+tb1.test <- tb1[ind==2, 1:6]
+tb1.trainLabels <- tb1[ind==1, 7, drop=TRUE]
+tb1.testLabels <- tb1[ind==2, 7, drop=TRUE]
+length(tb1.train)
+tb1_pred <- knn(tb1.train[],tb1.test, cl=tb1.trainLabels, k=3)
+results <- tb1_pred == tb1.testLabels
+acc <- length(which(results==TRUE)) / length(results)
+print(paste("Accuracy: ", acc *100))
 ```
